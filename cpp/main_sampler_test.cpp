@@ -67,7 +67,7 @@ void sw_check(GpoCore *led_p, GpiCore *sw_p) {
 }
 
 
-void sseg_print_temp(SsegCore *sseg_p, float temp) {
+void sseg_print_temp(SsegCore *sseg_p, float temp, bool change) {
     // Convert to "XX.X"
     int temp10 = (int)(temp * 10);   // e.g. 23.4 → 234
     bool neg = false;
@@ -86,20 +86,24 @@ void sseg_print_temp(SsegCore *sseg_p, float temp) {
         sseg_p->write_1ptn(0xFF, i);
 
 
-    int pos = 3;
-
     if (neg)
-        sseg_p->write_1ptn(0xBF, pos--);
+        sseg_p->write_1ptn(0xBF, 3);
     else if (d1 != 0)
-        sseg_p->write_1ptn(sseg_p->h2s(d1), pos--);
+        sseg_p->write_1ptn(sseg_p->h2s(d1), 3);
 
-    sseg_p->write_1ptn(sseg_p->h2s(d2), pos--);
+    sseg_p->write_1ptn(sseg_p->h2s(d2), 2);
 
-    sseg_p->write_1ptn(sseg_p->h2s(d3), pos--);
+    sseg_p->write_1ptn(sseg_p->h2s(d3), 1);
 
-    sseg_p->set_dp(1 << 1); 
+    sseg_p->set_dp(2 << 1); 
 
-    sseg_p->write_1ptn(0xC6, 0);
+    if (change) {
+       sseg_p->write_1ptn(0xE, 0);
+    }
+    else {
+       sseg_p->write_1ptn(0xC6, 0);
+    }
+
 }
 
 
@@ -109,13 +113,15 @@ void sseg_print_temp(SsegCore *sseg_p, float temp) {
  * read temperature from adt7420
  * @param adt7420_p pointer to adt7420 instance
  */
-void adt7420_check(I2cCore *adt7420_p, SsegCore *sseg_p) {
+void adt7420_check(I2cCore *adt7420_p, SsegCore *sseg_p, GpiCore *sw_p) {
    const uint8_t DEV_ADDR = 0x4b;
    uint8_t wbytes[2], bytes[2];
    //int ack;
    uint16_t tmp;
    float tmpC;
    float tmpF;
+   bool change;
+
 
 
    // read adt7420 id register to verify device existence
@@ -147,40 +153,30 @@ void adt7420_check(I2cCore *adt7420_p, SsegCore *sseg_p) {
       tmpF = ((float) tmpC * 1.8) + 32;
    }
 
-   // show on 7-segment
-   sseg_print_temp(sseg_p, tmpC);
+   change = (sw_p->read() & 0x01);
+
+   if(change) {
+      sseg_print_temp(sseg_p, tmpF, change);
+   }
+   else {
+      sseg_print_temp(sseg_p, tmpC, change);
+   }
+
    sleep_ms(500);
 }
 
 
-/**
- * core test
- * @param led_p pointer to led instance
- * @param sw_p pointer to switch instance
- */
-void show_test_id(int n, GpoCore *led_p) {
-   int i, ptn;
-
-   ptn = n; //1 << n;
-   for (i = 0; i < 20; i++) {
-      led_p->write(ptn);
-      sleep_ms(30);
-      led_p->write(0);
-      sleep_ms(30);
-   }
-}
-
 GpoCore led(get_slot_addr(BRIDGE_BASE, S2_LED));
+GpiCore sw(get_slot_addr(BRIDGE_BASE, S3_SW));
 SsegCore sseg(get_slot_addr(BRIDGE_BASE, S8_SSEG));
 I2cCore adt7420(get_slot_addr(BRIDGE_BASE, S10_I2C));
 
 int main() {
    //uint8_t id, ;
 
-   timer_check(&led);
    while (1) {
 
-      adt7420_check(&adt7420, &sseg);
+      adt7420_check(&adt7420, &sseg, &sw);
    } //while
 } //main
 
