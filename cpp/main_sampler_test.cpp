@@ -66,150 +66,57 @@ void sw_check(GpoCore *led_p, GpiCore *sw_p) {
    }
 }
 
-/**
- * uart transmits test line.
- * @note uart instance is declared as global variable in chu_io_basic.h
- */
-void uart_check() {
-   static int loop = 0;
 
-   uart.disp("uart test #");
-   uart.disp(loop);
-   uart.disp("\n\r");
-   loop++;
-}
+void sseg_print_temp(SsegCore *sseg_p, float temp) {
+    // Convert to "XX.X"
+    int temp10 = (int)(temp * 10);   // e.g. 23.4 → 234
+    bool neg = false;
 
-/**
- * read FPGA internal voltage temperature
- * @param adc_p pointer to xadc instance
- */
+    if (temp10 < 0) {
+        neg = true;
+        temp10 = -temp10;
+    }
 
-void adc_check(XadcCore *adc_p, GpoCore *led_p) {
-   double reading;
-   int n, i;
-   uint16_t raw;
+    int d1 = (temp10 / 100) % 10;   // tens
+    int d2 = (temp10 / 10) % 10;    // ones
+    int d3 = temp10 % 10;           // tenths
 
-   for (i = 0; i < 5; i++) {
-      // display 12-bit channel 0 reading in LED
-      raw = adc_p->read_raw(0);
-      raw = raw >> 4;
-      led_p->write(raw);
-      // display on-chip sensor and 4 channels in console
-      uart.disp("FPGA vcc/temp: ");
-      reading = adc_p->read_fpga_vcc();
-      uart.disp(reading, 3);
-      uart.disp(" / ");
-      reading = adc_p->read_fpga_temp();
-      uart.disp(reading, 3);
-      uart.disp("\n\r");
-      for (n = 0; n < 4; n++) {
-         uart.disp("analog channel/voltage: ");
-         uart.disp(n);
-         uart.disp(" / ");
-         reading = adc_p->read_adc_in(n);
-         uart.disp(reading, 3);
-         uart.disp("\n\r");
-      } // end for
-      sleep_ms(200);
-   }
+    // Clear all segments first
+    for (int i = 0; i < 8; i++)
+        sseg_p->write_1ptn(0xFF, i);
+
+
+    int pos = 3;
+
+    if (neg)
+        sseg_p->write_1ptn(0xBF, pos--);
+    else if (d1 != 0)
+        sseg_p->write_1ptn(sseg_p->h2s(d1), pos--);
+
+    sseg_p->write_1ptn(sseg_p->h2s(d2), pos--);
+
+    sseg_p->write_1ptn(sseg_p->h2s(d3), pos--);
+
+    sseg_p->set_dp(1 << 1); 
+
+    sseg_p->write_1ptn(0xC6, 0);
 }
 
 
-/**
- * Test pattern in 7-segment LEDs
- * @param sseg_p pointer to 7-seg LED instance
- */
 
-void sseg_check(SsegCore *sseg_p) {
-   int i, n;
-   uint8_t dp;
-
-   //turn off led
-   for (i = 0; i < 8; i++) {
-      sseg_p->write_1ptn(0xff, i);
-   }
-   //turn off all decimal points
-   sseg_p->set_dp(0x00);
-
-   // display 0x0 to 0xf in 4 epochs
-   // upper 4  digits mirror the lower 4
-   for (n = 0; n < 4; n++) {
-      for (i = 0; i < 4; i++) {
-         sseg_p->write_1ptn(sseg_p->h2s(i + n * 4), 3 - i);
-         sseg_p->write_1ptn(sseg_p->h2s(i + n * 4), 7 - i);
-         sleep_ms(300);
-      } // for i
-   }  // for n
-      // shift a decimal point 4 times
-   for (i = 0; i < 4; i++) {
-      bit_set(dp, 3 - i);
-      sseg_p->set_dp(1 << (3 - i));
-      sleep_ms(300);
-   }
-   //turn off led
-   for (i = 0; i < 8; i++) {
-      sseg_p->write_1ptn(0xff, i);
-   }
-   //turn off all decimal points
-   sseg_p->set_dp(0x00);
-
-}
-
-/**
- * Test adxl362 accelerometer using SPI
- */
-
-void gsensor_check(SpiCore *spi_p, GpoCore *led_p) {
-   const uint8_t RD_CMD = 0x0b;
-   const uint8_t PART_ID_REG = 0x02;
-   const uint8_t DATA_REG = 0x08;
-   const float raw_max = 127.0 / 2.0;  //128 max 8-bit reading for +/-2g
-
-   int8_t xraw, yraw, zraw;
-   float x, y, z;
-   int id;
-
-   spi_p->set_freq(400000);
-   spi_p->set_mode(0, 0);
-   // check part id
-   spi_p->assert_ss(0);    // activate
-   spi_p->transfer(RD_CMD);  // for read operation
-   spi_p->transfer(PART_ID_REG);  // part id address
-   id = (int) spi_p->transfer(0x00);
-   spi_p->deassert_ss(0);
-   uart.disp("read ADXL362 id (should be 0xf2): ");
-   uart.disp(id, 16);
-   uart.disp("\n\r");
-   // read 8-bit x/y/z g values once
-   spi_p->assert_ss(0);    // activate
-   spi_p->transfer(RD_CMD);  // for read operation
-   spi_p->transfer(DATA_REG);  //
-   xraw = spi_p->transfer(0x00);
-   yraw = spi_p->transfer(0x00);
-   zraw = spi_p->transfer(0x00);
-   spi_p->deassert_ss(0);
-   x = (float) xraw / raw_max;
-   y = (float) yraw / raw_max;
-   z = (float) zraw / raw_max;
-   uart.disp("x/y/z axis g values: ");
-   uart.disp(x, 3);
-   uart.disp(" / ");
-   uart.disp(y, 3);
-   uart.disp(" / ");
-   uart.disp(z, 3);
-   uart.disp("\n\r");
-}
 
 /*
  * read temperature from adt7420
  * @param adt7420_p pointer to adt7420 instance
  */
-void adt7420_check(I2cCore *adt7420_p, GpoCore *led_p) {
+void adt7420_check(I2cCore *adt7420_p, SsegCore *sseg_p) {
    const uint8_t DEV_ADDR = 0x4b;
    uint8_t wbytes[2], bytes[2];
    //int ack;
    uint16_t tmp;
    float tmpC;
+   float tmpF;
+
 
    // read adt7420 id register to verify device existence
    // ack = adt7420_p->read_dev_reg_byte(DEV_ADDR, 0x0b, &id);
@@ -233,16 +140,16 @@ void adt7420_check(I2cCore *adt7420_p, GpoCore *led_p) {
    if (tmp & 0x8000) {
       tmp = tmp >> 3;
       tmpC = (float) ((int) tmp - 8192) / 16;
+      tmpF = ((float) tmpC * 1.8) + 32;
    } else {
       tmp = tmp >> 3;
       tmpC = (float) tmp / 16;
+      tmpF = ((float) tmpC * 1.8) + 32;
    }
-   uart.disp("temperature (C): ");
-   uart.disp(tmpC);
-   uart.disp("\n\r");
-   led_p->write(tmp);
-   sleep_ms(1000);
-   led_p->write(0);
+
+   // show on 7-segment
+   sseg_print_temp(sseg_p, tmpC);
+   sleep_ms(500);
 }
 
 
@@ -264,6 +171,7 @@ void show_test_id(int n, GpoCore *led_p) {
 }
 
 GpoCore led(get_slot_addr(BRIDGE_BASE, S2_LED));
+SsegCore sseg(get_slot_addr(BRIDGE_BASE, S8_SSEG));
 I2cCore adt7420(get_slot_addr(BRIDGE_BASE, S10_I2C));
 
 int main() {
@@ -272,7 +180,8 @@ int main() {
    timer_check(&led);
    while (1) {
 
-      adt7420_check(&adt7420, &led);
+      adt7420_check(&adt7420, &sseg);
    } //while
 } //main
+
 
