@@ -1,11 +1,3 @@
-/*****************************************************************//**
- * @file main_sampler_test.cpp
- *
- * @brief Basic test of nexys4 ddr mmio cores
- *
- * @author p chu
- * @version v1.0: initial release
- *********************************************************************/
 
 // #define _DEBUG
 #include "chu_init.h"
