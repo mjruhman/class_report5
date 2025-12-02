@@ -14,9 +14,7 @@
 #include "sseg_core.h"
 #include "spi_core.h"
 #include "i2c_core.h"
-#include "ps2_core.h"
-#include "ddfs_core.h"
-#include "adsr_core.h"
+
 
 /**
  * blink once per second for 5 times.
@@ -116,65 +114,6 @@ void adc_check(XadcCore *adc_p, GpoCore *led_p) {
    }
 }
 
-/**
- * tri-color led dims gradually
- * @param led_p pointer to led instance
- * @param sw_p pointer to switch instance
- */
-
-void pwm_3color_led_check(PwmCore *pwm_p) {
-   int i, n;
-   double bright, duty;
-   const double P20 = 1.2589;  // P20=100^(1/20); i.e., P20^20=100
-
-   pwm_p->set_freq(50);
-   for (n = 0; n < 3; n++) {
-      bright = 1.0;
-      for (i = 0; i < 20; i++) {
-         bright = bright * P20;
-         duty = bright / 100.0;
-         pwm_p->set_duty(duty, n);
-         pwm_p->set_duty(duty, n + 3);
-         sleep_ms(100);
-      }
-      sleep_ms(300);
-      pwm_p->set_duty(0.0, n);
-      pwm_p->set_duty(0.0, n + 3);
-   }
-}
-
-/**
- * Test debounced buttons
- *   - count transitions of normal and debounced button
- * @param db_p pointer to debouceCore instance
- */
-
-void debounce_check(DebounceCore *db_p, GpoCore *led_p) {
-   long start_time;
-   int btn_old, db_old, btn_new, db_new;
-   int b = 0;
-   int d = 0;
-   uint32_t ptn;
-
-   start_time = now_ms();
-   btn_old = db_p->read();
-   db_old = db_p->read_db();
-   do {
-      btn_new = db_p->read();
-      db_new = db_p->read_db();
-      if (btn_old != btn_new) {
-         b = b + 1;
-         btn_old = btn_new;
-      }
-      if (db_old != db_new) {
-         d = d + 1;
-         db_old = db_new;
-      }
-      ptn = d & 0x0000000f;
-      ptn = ptn | (b & 0x0000000f) << 4;
-      led_p->write(ptn);
-   } while ((now_ms() - start_time) < 5000);
-}
 
 /**
  * Test pattern in 7-segment LEDs
@@ -306,127 +245,6 @@ void adt7420_check(I2cCore *adt7420_p, GpoCore *led_p) {
    led_p->write(0);
 }
 
-void ps2_check(Ps2Core *ps2_p) {
-   int id;
-   int lbtn, rbtn, xmov, ymov;
-   char ch;
-   unsigned long last;
-
-   uart.disp("\n\rPS2 device (1-keyboard / 2-mouse): ");
-   id = ps2_p->init();
-   uart.disp(id);
-   uart.disp("\n\r");
-   last = now_ms();
-   do {
-      if (id == 2) {  // mouse
-         if (ps2_p->get_mouse_activity(&lbtn, &rbtn, &xmov, &ymov)) {
-            uart.disp("[");
-            uart.disp(lbtn);
-            uart.disp(", ");
-            uart.disp(rbtn);
-            uart.disp(", ");
-            uart.disp(xmov);
-            uart.disp(", ");
-            uart.disp(ymov);
-            uart.disp("] \r\n");
-            last = now_ms();
-
-         }   // end get_mouse_activitiy()
-      } else {
-         if (ps2_p->get_kb_ch(&ch)) {
-            uart.disp(ch);
-            uart.disp(" ");
-            last = now_ms();
-         } // end get_kb_ch()
-      }  // end id==2
-   } while (now_ms() - last < 5000);
-   uart.disp("\n\rExit PS2 test \n\r");
-
-}
-
-/**
- * play primary notes with ddfs
- * @param ddfs_p pointer to ddfs core
- * @note: music tempo is defined as beats of quarter-note per minute.
- *        60 bpm is 1 sec per quarter note
- * @note "click" sound due to abrupt stop of a note
- *
- */
-void ddfs_check(DdfsCore *ddfs_p, GpoCore *led_p) {
-   int i, j;
-   float env;
-
-   //vol = (float)sw.read_pin()/(float)(1<<16),
-   ddfs_p->set_env_source(0);  // select envelop source
-   ddfs_p->set_env(0.0);   // set volume
-   sleep_ms(500);
-   ddfs_p->set_env(1.0);   // set volume
-   ddfs_p->set_carrier_freq(262);
-   sleep_ms(2000);
-   ddfs_p->set_env(0.0);   // set volume
-   sleep_ms(2000);
-   // volume control (attenuation)
-   ddfs_p->set_env(0.0);   // set volume
-   env = 1.0;
-   for (i = 0; i < 1000; i++) {
-      ddfs_p->set_env(env);
-      sleep_ms(10);
-      env = env / 1.0109; //1.0109**1024=2**16
-   }
-   // frequency modulation 635-912 800 - 2000 siren sound
-   ddfs_p->set_env(1.0);   // set volume
-   ddfs_p->set_carrier_freq(635);
-   for (i = 0; i < 5; i++) {               // 10 cycles
-      for (j = 0; j < 30; j++) {           // sweep 30 steps
-         ddfs_p->set_offset_freq(j * 10);  // 10 Hz increment
-         sleep_ms(25);
-      } // end j loop
-   } // end i loop
-   ddfs_p->set_offset_freq(0);
-   ddfs_p->set_env(0.0);   // set volume
-   sleep_ms(1000);
-}
-
-/**
- * play primary notes with ddfs
- * @param adsr_p pointer to adsr core
- * @param ddfs_p pointer to ddfs core
- * @note: music tempo is defined as beats of quarter-note per minute.
- *        60 bpm is 1 sec per quarter note
- *
- */
-void adsr_check(AdsrCore *adsr_p, GpoCore *led_p, GpiCore *sw_p) {
-   const int melody[] = { 0, 2, 4, 5, 7, 9, 11 };
-   int i, oct;
-
-   adsr_p->init();
-   // no adsr envelop and  play one octave
-   adsr_p->bypass();
-   for (i = 0; i < 7; i++) {
-      led_p->write(bit(i));
-      adsr_p->play_note(melody[i], 3, 500);
-      sleep_ms(500);
-   }
-   adsr_p->abort();
-   sleep_ms(1000);
-   // set and enable adsr envelop
-   // play 4 octaves
-   adsr_p->select_env(sw_p->read());
-   for (oct = 3; oct < 6; oct++) {
-      for (i = 0; i < 7; i++) {
-         led_p->write(bit(i));
-         adsr_p->play_note(melody[i], oct, 500);
-         sleep_ms(500);
-      }
-   }
-   led_p->write(0);
-   // test duration
-   sleep_ms(1000);
-   for (i = 0; i < 4; i++) {
-      adsr_p->play_note(0, 4, 500 * i);
-      sleep_ms(500 * i + 1000);
-   }
-}
 
 /**
  * core test
@@ -446,47 +264,15 @@ void show_test_id(int n, GpoCore *led_p) {
 }
 
 GpoCore led(get_slot_addr(BRIDGE_BASE, S2_LED));
-GpiCore sw(get_slot_addr(BRIDGE_BASE, S3_SW));
-XadcCore adc(get_slot_addr(BRIDGE_BASE, S5_XDAC));
-PwmCore pwm(get_slot_addr(BRIDGE_BASE, S6_PWM));
-DebounceCore btn(get_slot_addr(BRIDGE_BASE, S7_BTN));
-SsegCore sseg(get_slot_addr(BRIDGE_BASE, S8_SSEG));
-SpiCore spi(get_slot_addr(BRIDGE_BASE, S9_SPI));
 I2cCore adt7420(get_slot_addr(BRIDGE_BASE, S10_I2C));
-Ps2Core ps2(get_slot_addr(BRIDGE_BASE, S11_PS2));
-DdfsCore ddfs(get_slot_addr(BRIDGE_BASE, S12_DDFS));
-AdsrCore adsr(get_slot_addr(BRIDGE_BASE, S13_ADSR), &ddfs);
-
 
 int main() {
    //uint8_t id, ;
 
    timer_check(&led);
    while (1) {
-      show_test_id(1, &led);
-      led_check(&led, 16);
-      sw_check(&led, &sw);
-      show_test_id(3, &led);
-      uart_check();
-      debug("main - switch value / up time : ", sw.read(), now_ms());
-      show_test_id(5, &led);
-      adc_check(&adc, &led);
-      show_test_id(6, &led);
-      pwm_3color_led_check(&pwm);
-      show_test_id(7, &led);
-      debounce_check(&btn, &led);
-      show_test_id(8, &led);
-      sseg_check(&sseg);
-      show_test_id(9, &led);
-      gsensor_check(&spi, &led);
-      show_test_id(10, &led);
+
       adt7420_check(&adt7420, &led);
-      show_test_id(11, &led);
-      ps2_check(&ps2);
-      show_test_id(12, &led);
-      ddfs_check(&ddfs, &led);
-      show_test_id(13, &led);
-      adsr_check(&adsr, &led, &sw);
    } //while
 } //main
 
