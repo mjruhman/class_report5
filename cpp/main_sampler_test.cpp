@@ -68,41 +68,26 @@ void sw_check(GpoCore *led_p, GpiCore *sw_p) {
 
 
 void sseg_print_temp(SsegCore *sseg_p, float temp, bool change) {
-    // Convert to "XX.X"
-    int temp10 = (int)(temp * 10);   // e.g. 23.4 → 234
-    bool neg = false;
+   int tempy = (int)(temp * 10);
 
-    if (temp10 < 0) {
-        neg = true;
-        temp10 = -temp10;
-    }
-
-    int d1 = (temp10 / 100) % 10;   // tens
-    int d2 = (temp10 / 10) % 10;    // ones
-    int d3 = temp10 % 10;           // tenths
-
-    // Clear all segments first
-    for (int i = 0; i < 8; i++)
+   int d1 = (tempy / 100) % 10;  
+   int d2 = (tempy / 10) % 10;   
+   int d3 = tempy % 10;           
+   
+   // Clear all first
+   for (int i = 0; i < 8; i++)
         sseg_p->write_1ptn(0xFF, i);
 
-
-    if (neg)
-        sseg_p->write_1ptn(0xBF, 3);
-    else if (d1 != 0)
-        sseg_p->write_1ptn(sseg_p->h2s(d1), 3);
-
-    sseg_p->write_1ptn(sseg_p->h2s(d2), 2);
-
-    sseg_p->write_1ptn(sseg_p->h2s(d3), 1);
-
-    sseg_p->set_dp(2 << 1); 
-
-    if (change) {
+   sseg_p->write_1ptn(sseg_p->h2s(d1), 3);
+   sseg_p->write_1ptn(sseg_p->h2s(d2), 2);
+   sseg_p->write_1ptn(sseg_p->h2s(d3), 1);
+   sseg_p->set_dp(2 << 1); 
+   if (change) {
        sseg_p->write_1ptn(0xE, 0);
-    }
-    else {
+   }
+   else {
        sseg_p->write_1ptn(0xC6, 0);
-    }
+   }
 
 }
 
@@ -172,12 +157,11 @@ SsegCore sseg(get_slot_addr(BRIDGE_BASE, S8_SSEG));
 I2cCore adt7420(get_slot_addr(BRIDGE_BASE, S10_I2C));
 
 int main() {
-   //uint8_t id, ;
-
    while (1) {
 
       adt7420_check(&adt7420, &sseg, &sw);
    } //while
 } //main
+
 
 
